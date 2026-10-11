@@ -1,0 +1,6 @@
+{
+  "name": "why-hire-you-scorecard",
+  "private": true,
+  "scripts": { "deploy": "wrangler deploy" },
+  "devDependencies": { "wrangler": "^4" }
+}
