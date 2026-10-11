@@ -4,6 +4,8 @@
   "compatibility_date": "2026-10-01",
   "keep_vars": true,
   "vars": {
+    "BREVO_LIST_ID": "3",
+    "NOTIFY_EMAIL": "unapologeticquenn@gmail.com",
     "RESEND_FROM": "Brenda Blanche <notifications@mail.brendablanche.site>"
   },
   "assets": {
