@@ -1,5 +1,5 @@
 {
-  "name": "market-perception-scorecard",
+  "name": "why-hire-you-scorecard",
   "main": "src/worker.js",
   "compatibility_date": "2026-10-01",
   "keep_vars": true,
