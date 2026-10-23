@@ -2,30 +2,29 @@
 
    When someone enters their name + email (with consent) before seeing results:
      1) BREVO   saves/updates the contact: scores, primary gap, consent, results link,
-                segment, readiness, help preference, question, and offer-routing path
+                segment, delivery history, past help-seeking, story, and offer-routing path
      2) RESEND  emails Brenda: "This person took the Scorecard", with the full results
      3) RESEND  emails the person: "Your results are in" with their results link
 
-   New in this version:
-     - SEGMENT, SEGMENT_LABEL, READY_TO_DELIVER, HELP_WANTED, QUESTION
-     - OFFER_PATH, SCORECARD_DATE, BOOKED_OR_PURCHASED
+   This version matches the Mom Test-based assessment (21 questions, all about past events):
+     - Opener (unscored): which situation happened most in the last 3 months -> SEGMENT
+     - 18 scored questions (3 per area, 1-4 each)
+     - 2 bonus routing questions (unscored):
+         READY_TO_DELIVER = "Have you delivered this kind of work for a paying client in the last 12 months?"
+         HELP_WANTED      = "The last time you wanted help with something like this, what did you do?"
+     - QUESTION now holds the story ("last time a client asked what you do") plus
+       "Already tried: ..." when they filled that box in.
+     - Offer routing mirrors the results page exactly.
 
-   In Brevo, create these TEXT contact attributes once:
-     SEGMENT
-     SEGMENT_LABEL
-     READY_TO_DELIVER
-     HELP_WANTED
-     QUESTION
-     OFFER_PATH
-
-   Create these additional attributes:
+   Brevo TEXT contact attributes (create once):
+     SEGMENT, SEGMENT_LABEL, READY_TO_DELIVER, HELP_WANTED, QUESTION, OFFER_PATH
+   Other attributes:
      SCORECARD_DATE - Date
      BOOKED_OR_PURCHASED - Boolean
 
-   Rename these answer attributes if your Brevo account uses older names:
-     Q05_OFFER_COMMITMENT
-     Q06_OFFER_PRICE
-     Q09_CONFIDENCE
+   The Q01-Q18 attribute NAMES are unchanged on purpose, so your existing Brevo
+   attributes keep working. Some names no longer describe the question exactly
+   (see the map next to QKEYS). The saved values are correct.
 
    Variables and Secrets (Settings > Variables and Secrets):
      BREVO_API_KEY (Secret)
@@ -43,12 +42,13 @@ const json = (o, s = 200) =>
 
 const t = v => String(v ?? '').trim().slice(0, 300);
 
+/* FIX: escape to real HTML entities (the pasted version mapped each character to itself). */
 const esc = s =>
   String(s ?? '').replace(/[&<>"]/g, c => ({
-    '&': '&',
-    '<': '<',
-    '>': '>',
-    '"': '"'
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;'
   }[c]));
 
 const DIMS = [
@@ -60,6 +60,16 @@ const DIMS = [
   'Buyer Journey & Conversion'
 ];
 
+/* Attribute names kept as-is. What each one now holds:
+   Q01 last 3 enquiries: who          Q10 asked last 3 clients for proof
+   Q02 prospect's words               Q11 last hesitation: reason
+   Q03 paid / asked price             Q12 what client saw before booking
+   Q04 asked what to hire you for     Q13 headline + About + posts together
+   Q05 chose 1 lead service           Q14 who commented on last 5 posts
+   Q06 how last price was set         Q15 how a referrer described you
+   Q07 what prospect said of profile  Q16 next 7 days after interest
+   Q08 why buyer chose them/other     Q17 last 3 proposals
+   Q09 last time you said why you     Q18 what you did when prospect went quiet */
 const QKEYS = [
   'Q01_BUYER_TYPE',
   'Q02_BUYER_PROBLEM',
@@ -82,24 +92,24 @@ const QKEYS = [
 ];
 
 const QLABELS = [
-  'Who needs your expertise',
-  'The buyer\'s problem in their words',
-  'Evidence the problem matters',
-  'Can a buyer say what to hire you for',
-  'Choosing one service to lead with',
-  'What the price is based on',
-  'Why your work matters (quick read)',
-  'What makes your approach different',
-  'How it feels to say why you are the right person',
-  'What a buyer can see of your ability',
-  'Handling buyer hesitations',
-  'What working with you involves',
-  'Consistency across profile, offer, content',
-  'Would a follower know what you\'re known for',
-  'Deliberate way to make value visible',
-  'Is the next step clear',
-  'Path from discovery to considering you',
-  'Learning from buyer questions and decisions'
+  'Who your last 3 enquiries came from',
+  'The words a prospect used for their problem',
+  'Whether anyone paid or asked your price',
+  'What happened when asked what to hire you for',
+  'What you did when choosing 1 lead service',
+  'How your last price was set',
+  'What a prospect said about your profile or site',
+  'Why a buyer chose you or another provider',
+  'What you said when explaining why you are right',
+  'Whether you asked past clients for proof',
+  'The reason behind the last hesitation',
+  'What the last client saw before booking',
+  'What your headline, About and posts say together',
+  'Who responded to your last 5 posts',
+  'How a referrer described what you do',
+  'What happened in the 7 days after interest',
+  'What happened to your last 3 proposals',
+  'What you did when a prospect went quiet'
 ];
 
 const cleanAnswers = raw =>
@@ -116,33 +126,36 @@ const FRIENDLY = {
   'Positioning & Differentiation': 'Why they should pick you',
   'Evidence & Trust': 'Why they can trust you',
   'Market Signals & Recognition': 'What people see online',
-  'Buyer Journey & Conversion': 'What happens after they\'re interested'
+  'Buyer Journey & Conversion': 'What happens after they\u2019re interested'
 };
 
+/* Same wording as the options on the assessment's first question. */
 const SEGL = {
-  A: 'I can do the work, but I can\'t say what someone should hire me for.',
-  B: 'I can do lots of things and I can\'t pick a lead service.',
-  C: 'I have real experience, but people with less of it get the opportunities.',
-  D: 'I post and have some audience, but nobody asks to work with me.',
-  E: 'People show interest, then go quiet, or say it\'s too expensive.',
-  X: 'Not sure, probably a mix'
+  A: 'People asked what I do, and I struggled to say what they could hire me for.',
+  B: 'I had several things I could offer and couldn\u2019t decide which to lead with.',
+  C: 'I have real experience, but someone with less of it won work I was right for.',
+  D: 'I kept posting or networking and got reactions, but no real enquiries.',
+  E: 'Prospects showed interest, then went quiet or said it was too expensive.',
+  X: 'None of these, or a mix.'
 };
 
+/* Bonus question 1: delivered this kind of work for a paying client in the last 12 months? */
 const READYL = {
-  1: 'Yes, has done similar work and could start soon',
-  2: 'Mostly, would want to prepare first',
-  3: 'Not sure, has not delivered it for someone yet',
-  4: 'Not yet, still building the skill'
+  1: 'Yes, for paying clients, more than once',
+  2: 'Yes, but not recently or only as a small part of a bigger project',
+  3: 'Not as a paid engagement yet (has the skills, no client has paid for this)',
+  4: 'No, still building the skill'
 };
 
+/* Bonus question 2: the last time they wanted help with something like this, what did they do? */
 const HELPL = {
-  1: 'Work on it myself first',
-  2: 'One conversation about their situation',
-  3: 'Guided one-on-one help',
-  4: 'Not sure yet'
+  1: 'Worked on it themselves',
+  2: 'Talked it through with 1 person (peer, mentor or call)',
+  3: 'Paid for guided help (coach, course or consultant)',
+  4: 'Has not tried anything yet'
 };
 
-const q600 = v => String(v ?? '').trim().slice(0, 600);
+const q1100 = v => String(v ?? '').trim().slice(0, 1100);
 
 const fr = n => FRIENDLY[n] || n;
 
@@ -158,40 +171,22 @@ const gapNames = v =>
     .split(' + ')
     .filter(x => DIMS.includes(x));
 
-/* Determines the Brevo offer-routing path.
+/* Brevo offer-routing path. Mirrors the "Suggested for you" logic on the results page:
 
-   Priority:
-   1. Strong score in every area = self-guided testing path
-   2. Not ready to deliver = no paid pitch
-   3. Prefers self-guided = self-guided path
-   4. Narrow buyer-journey issue + wants a conversation = Clarity Call
-   5. Broad strategic issue + wants guided help = Blueprint
-   6. Anything uncertain = self-guided path
-*/
-const offerPath = (resultType, ready, help, primaryGap) => {
-  if (resultType === 'strong') return 'self_guided';
+   1. Still building the skill (ready = 4)  -> no_pitch (page shows no call or program)
+   2. Worked on it themselves (help = 1)    -> self_guided
+   3. Talked to 1 person (help = 2)         -> clarity_call
+   4. Paid for guided help (help = 3)       -> blueprint
+   5. Hasn't tried anything (help = 4)      -> self_guided if no area is a priority, else clarity_call
 
-  if (ready === 3 || ready === 4) return 'no_pitch';
-
+   Note: ready = 3 (no paid engagement yet) is NOT blocked, because the page still
+   shows the offers to those people, with a note that first proof matters more. */
+const offerPath = (resultType, ready, help) => {
+  if (ready === 4) return 'no_pitch';
   if (help === 1) return 'self_guided';
-
-  const broadAreas = [
-    'Market & Problem Clarity',
-    'Offer Design',
-    'Positioning & Differentiation',
-    'Evidence & Trust',
-    'Market Signals & Recognition'
-  ];
-
-  if (help === 2 && primaryGap === 'Buyer Journey & Conversion') {
-    return 'clarity_call';
-  }
-
-  if (help === 3 && broadAreas.includes(primaryGap)) {
-    return 'blueprint';
-  }
-
-  return 'self_guided';
+  if (help === 2) return 'clarity_call';
+  if (help === 3) return 'blueprint';
+  return resultType === 'strong' ? 'self_guided' : 'clarity_call';
 };
 
 const brevo = (env, body) =>
@@ -224,7 +219,7 @@ const resend = (env, to, subject, html, replyTo) =>
 const P =
   'margin:0 0 18px;font:17px/1.65 Georgia,\'Times New Roman\',serif;color:#14100F';
 
-function firstEmail(name, kind, gaps, url, consent, seg) {
+function firstEmail(name, kind, gaps, url, consent, seg, path) {
   const g = gaps.map(fr).join(' + ');
 
   const line =
@@ -238,6 +233,10 @@ function firstEmail(name, kind, gaps, url, consent, seg) {
 
   const btn = l =>
     `<p style="margin:6px 0 24px"><a href="${esc(url)}" style="display:inline-block;background:#E4007C;color:#ffffff;text-decoration:none;font:600 15px Arial,sans-serif;letter-spacing:.04em;padding:14px 26px;border-radius:999px">${l}</a></p>`;
+
+  /* People who are still building the skill are not pointed to a call (matches the results page). */
+  const noPitchLine = `When you're ready, your results page also shows the practical next steps for where you are right now.`;
+  const pitchLine = `When you're ready, your results page also shows some practical next steps, including how to book a Clarity Call or message me on WhatsApp.`;
 
   return `<!DOCTYPE html>
 <html>
@@ -253,7 +252,7 @@ function firstEmail(name, kind, gaps, url, consent, seg) {
                 ${btn('VIEW YOUR RESULTS')}
                 ${
                   seg && seg !== 'X'
-                    ? `<p style="${P}">You told us this sounds most like you: <i>&ldquo;${esc(SEGL[seg])}&rdquo;</i></p>`
+                    ? `<p style="${P}">You told us this happened to you most in the last 3 months: <i>&ldquo;${esc(SEGL[seg])}&rdquo;</i></p>`
                     : ''
                 }
                 <p style="${P}">Your answers look at six areas that decide whether people understand what you sell, trust you, and say yes:</p>
@@ -270,13 +269,15 @@ function firstEmail(name, kind, gaps, url, consent, seg) {
                 <p style="${P}">${
                   consent
                     ? `Over the next few days, I'll share some practical ways to look at that gap, without assuming you need to post more, redesign everything, or change your whole business.`
-                    : `When you're ready, your results page also shows some practical next steps, including how to book a Clarity Call or message me on WhatsApp.`
+                    : path === 'no_pitch'
+                      ? noPitchLine
+                      : pitchLine
                 }</p>
                 <p style="${P}">Start with your results here:</p>
                 ${btn('VIEW MY RESULTS')}
                 <p style="${P}">Brenda</p>
                 <p style="margin:0;padding-top:18px;border-top:1px solid #e6dfd8;font:12px/1.6 Arial,sans-serif;color:#8a8079">
-                  Brenda Blanche Â· Market Perception Strategist<br>
+                  Brenda Blanche &middot; Market Perception Strategist<br>
                   You're receiving this because you completed the Why-Hire-You Scorecard and asked for your results.${
                     consent
                       ? ' You also agreed to receive follow-up emails. Reply to this email to unsubscribe.'
@@ -304,13 +305,23 @@ function notifyEmail(
   seg,
   ready,
   help,
-  question
+  question,
+  path
 ) {
   const row = (a, b) =>
     `<tr>
       <td style="padding:6px 14px 6px 0;color:#6b625b">${esc(a)}</td>
       <td style="padding:6px 0"><b>${b}</b></td>
     </tr>`;
+
+  /* The form combines the story and the "already tried" box into one field. */
+  const [story, tried] = question.split('\n\nAlready tried: ');
+
+  /* Same measure the results page shows: answers that describe something that happened (3 or 4 pts). */
+  const events = ans ? ans.filter(a => a.s >= 3).length : null;
+
+  const quote = txt =>
+    `<p style="margin:0 0 10px;padding:12px 14px;border-left:3px solid #E4007C;background:#faf6f1;white-space:pre-wrap">${esc(txt)}</p>`;
 
   return `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#14100F">
     <p style="font-size:18px"><b>${esc(name)}</b> just took the Why-Hire-You Scorecard.</p>
@@ -324,27 +335,43 @@ function notifyEmail(
           : 'No: results email only'
       )}
       ${row(
-        'Situation they picked',
+        'Happened most in last 3 months',
         esc(seg ? seg + ': ' + SEGL[seg] : '(not given)')
       )}
-      ${row('Could deliver this month?', esc(READYL[ready] || '(not given)'))}
-      ${row('Help they want', esc(HELPL[help] || '(not given)'))}
+      ${row(
+        'Delivered this for a paying client (12 months)',
+        esc(READYL[ready] || '(not given)')
+      )}
+      ${row(
+        'Last time they wanted help, they',
+        esc(HELPL[help] || '(not given)')
+      )}
       ${row('Result type', esc(t(d.result_type)))}
       ${row('Priority area', esc(gaps.join(' + ') || 'None flagged'))}
+      ${row('Offer path (Brevo)', esc(path))}
       ${row('Total (context only)', esc(Number(d.score) || 0) + ' / 72')}
+      ${
+        events === null
+          ? ''
+          : row('Answers based on real events', esc(events) + ' / 18')
+      }
     </table>
 
     ${
-      question
-        ? `<p style="margin:18px 0 6px"><b>The one question they most want answered (their words)</b></p>
-           <p style="margin:0;padding:12px 14px;border-left:3px solid #E4007C;background:#faf6f1">${esc(question)}</p>`
+      story
+        ? `<p style="margin:18px 0 6px"><b>The last time a potential client asked what they do (their words)</b></p>${quote(story)}`
+        : ''
+    }
+    ${
+      tried
+        ? `<p style="margin:12px 0 6px"><b>What they have already tried or paid for (their words)</b></p>${quote(tried)}`
         : ''
     }
 
     <p style="margin:18px 0 6px"><b>Six-dimension breakdown</b></p>
     <table style="border-collapse:collapse">
       ${DIMS.map(
-        (n, i) => row(n, `${scores[i]} / 12 Â· ${esc(band(scores[i]))}`)
+        (n, i) => row(n, `${scores[i]} / 12 &middot; ${esc(band(scores[i]))}`)
       ).join('')}
     </table>
 
@@ -359,7 +386,7 @@ function notifyEmail(
                   const i = di * 3 + k;
                   return `<p style="margin:0 0 6px"><span style="color:#6b625b">Q${i + 1} ${esc(
                     QLABELS[i]
-                  )}:</span><br>${ans[i].s}/4 Â· ${esc(ans[i].t)}</p>`;
+                  )}:</span><br>${ans[i].s}/4 &middot; ${esc(ans[i].t)}</p>`;
                 })
                 .join('')
           ).join('')
@@ -369,9 +396,8 @@ function notifyEmail(
     <p style="margin:18px 0 6px"><b>About them</b></p>
     <table style="border-collapse:collapse">
       ${row('Role / industry', esc(t(d.role)) || '(blank)')}
-      ${row('Primary service', esc(t(d.service)) || '(blank)')}
-      ${row('Who they want to help', esc(t(d.audience)) || '(blank)')}
-      ${row('Their question', esc(question) || '(blank)')}
+      ${row('What a client would hire them for', esc(t(d.service)) || '(blank)')}
+      ${row('Their last best client', esc(t(d.audience)) || '(blank)')}
     </table>
 
     ${url ? `<p style="margin-top:18px"><a href="${esc(url)}">Open their results page</a></p>` : ''}
@@ -427,10 +453,10 @@ async function handle(request, env) {
   const seg = Object.keys(SEGL).includes(d.segment) ? d.segment : '';
   const ready = [1, 2, 3, 4].includes(Number(d.deliver)) ? Number(d.deliver) : 0;
   const help = [1, 2, 3, 4].includes(Number(d.help)) ? Number(d.help) : 0;
-  const question = q600(d.question);
+  /* Story (up to 600) + "Already tried" (up to 400) arrive together, so allow room for both. */
+  const question = q1100(d.question);
 
-  const primaryGapName = gaps[0] || '';
-  const path = offerPath(kind, ready, help, primaryGapName);
+  const path = offerPath(kind, ready, help);
   const today = new Date().toISOString().slice(0, 10);
 
   const core = {
@@ -453,8 +479,6 @@ async function handle(request, env) {
     ROLE: t(d.role),
     PRIMARY_SERVICE: t(d.service),
     AUDIENCE: t(d.audience),
-
-    /* New Brevo routing fields */
     OFFER_PATH: path,
     SCORECARD_DATE: today,
     BOOKED_OR_PURCHASED: false
@@ -470,7 +494,7 @@ async function handle(request, env) {
 
   const answerAttrs = ans
     ? Object.fromEntries(
-        QKEYS.map((k, i) => [k, `${ans[i].s}/4 Â· ${ans[i].t}`])
+        QKEYS.map((k, i) => [k, `${ans[i].s}/4 \u00B7 ${ans[i].t}`])
       )
     : {};
 
@@ -508,7 +532,7 @@ async function handle(request, env) {
           env,
           env.NOTIFY_EMAIL,
           `New Scorecard: ${name}${seg ? ' [' + seg + ']' : ''}${
-            gaps.length ? ' Â· ' + gaps.join(' + ') : ''
+            gaps.length ? ' \u00B7 ' + gaps.join(' + ') : ''
           }`,
           notifyEmail(
             d,
@@ -521,7 +545,8 @@ async function handle(request, env) {
             seg,
             ready,
             help,
-            question
+            question,
+            path
           ),
           email
         ).then(r => r.ok)
@@ -532,7 +557,7 @@ async function handle(request, env) {
           env,
           email,
           'Your Why-Hire-You Scorecard results',
-          firstEmail(name, kind, gaps, url, consent, seg),
+          firstEmail(name, kind, gaps, url, consent, seg, path),
           env.NOTIFY_EMAIL
         ).then(r => r.ok)
       : Promise.resolve(false)
