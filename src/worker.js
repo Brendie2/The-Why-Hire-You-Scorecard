@@ -4,7 +4,8 @@
      1) BREVO   saves/updates the contact: scores, primary gap, consent, results link,
                 segment, delivery history, past help-seeking, story, and offer-routing path
      2) RESEND  emails Brenda: "This person took the Scorecard", with the full results
-     3) RESEND  emails the person: "Your results are in" with their results link
+     3) RESEND  emails the person: "This is why clients hesitate to hire you"
+                with their results link and, where appropriate, the Clarity Call link
 
    This version matches the Mom Test-based assessment (21 questions, all about past events):
      - Opener (unscored): which situation happened most in the last 3 months -> SEGMENT
@@ -42,7 +43,7 @@ const json = (o, s = 200) =>
 
 const t = v => String(v ?? '').trim().slice(0, 300);
 
-/* FIX: escape to real HTML entities (the pasted version mapped each character to itself). */
+/* Escape to real HTML entities. */
 const esc = s =>
   String(s ?? '').replace(/[&<>"]/g, c => ({
     '&': '&amp;',
@@ -126,13 +127,13 @@ const FRIENDLY = {
   'Positioning & Differentiation': 'Why they should pick you',
   'Evidence & Trust': 'Why they can trust you',
   'Market Signals & Recognition': 'What people see online',
-  'Buyer Journey & Conversion': 'What happens after they\u2019re interested'
+  'Buyer Journey & Conversion': 'What happens after they’re interested'
 };
 
 /* Same wording as the options on the assessment's first question. */
 const SEGL = {
   A: 'People asked what I do, and I struggled to say what they could hire me for.',
-  B: 'I had several things I could offer and couldn\u2019t decide which to lead with.',
+  B: 'I had several things I could offer and couldn’t decide which to lead with.',
   C: 'I have real experience, but someone with less of it won work I was right for.',
   D: 'I kept posting or networking and got reactions, but no real enquiries.',
   E: 'Prospects showed interest, then went quiet or said it was too expensive.',
@@ -219,6 +220,8 @@ const resend = (env, to, subject, html, replyTo) =>
 const P =
   'margin:0 0 18px;font:17px/1.65 Georgia,\'Times New Roman\',serif;color:#14100F';
 
+const CLARITY_CALL_URL = 'https://clarity.brendablanche.site';
+
 function firstEmail(name, kind, gaps, url, consent, seg, path) {
   const g = gaps.map(fr).join(' + ');
 
@@ -231,16 +234,31 @@ function firstEmail(name, kind, gaps, url, consent, seg, path) {
           ? 'None of your six areas scored in the lower bands. Your results page explains how to check whether your market-facing evidence supports that.'
           : '';
 
-  const btn = l =>
-    `<p style="margin:6px 0 24px"><a href="${esc(url)}" style="display:inline-block;background:#E4007C;color:#ffffff;text-decoration:none;font:600 15px Arial,sans-serif;letter-spacing:.04em;padding:14px 26px;border-radius:999px">${l}</a></p>`;
+  const resultsButton = `
+    <p style="margin:6px 0 24px">
+      <a href="${esc(url)}"
+         style="display:inline-block;background:#E4007C;color:#ffffff;text-decoration:none;font:600 15px Arial,sans-serif;letter-spacing:.04em;padding:14px 26px;border-radius:999px">
+        VIEW MY RESULTS
+      </a>
+    </p>`;
 
-  /* People who are still building the skill are not pointed to a call (matches the results page). */
-  const noPitchLine = `When you're ready, your results page also shows the practical next steps for where you are right now.`;
-  const pitchLine = `When you're ready, your results page also shows some practical next steps, including how to book a Clarity Call or message me on WhatsApp.`;
+  const callButton = `
+    <p style="margin:6px 0 24px">
+      <a href="${CLARITY_CALL_URL}"
+         style="display:inline-block;background:#14100F;color:#ffffff;text-decoration:none;font:600 15px Arial,sans-serif;letter-spacing:.04em;padding:14px 26px;border-radius:999px">
+        BOOK MY 27-MINUTE CLARITY CALL
+      </a>
+    </p>`;
+
+  const showCall = path !== 'no_pitch';
 
   return `<!DOCTYPE html>
 <html>
   <body style="margin:0;background:#ffffff">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0">
+      Here is where qualified buyers get confused.
+    </div>
+
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
       <tr>
         <td align="center" style="padding:28px 16px">
@@ -248,37 +266,86 @@ function firstEmail(name, kind, gaps, url, consent, seg, path) {
             <tr>
               <td>
                 <p style="${P}">Hi ${esc(name)},</p>
-                <p style="${P}">Your Why-Hire-You Scorecard results are ready.</p>
-                ${btn('VIEW YOUR RESULTS')}
+
+                <p style="${P}">
+                  Your <b>Why-Hire-You Scorecard</b> results are ready.
+                </p>
+
+                <p style="${P}">
+                  Your result does not measure whether you are good at your work.
+                </p>
+
+                <p style="${P}">
+                  It measures something more commercial:
+                </p>
+
+                <p style="${P}">
+                  <b>Can a potential client quickly understand, trust, and choose you?</b>
+                </p>
+
                 ${
                   seg && seg !== 'X'
-                    ? `<p style="${P}">You told us this happened to you most in the last 3 months: <i>&ldquo;${esc(SEGL[seg])}&rdquo;</i></p>`
+                    ? `<p style="${P}">You told us this happened most often in the last 3 months:</p>
+                       <p style="${P}"><i>&ldquo;${esc(SEGL[seg])}&rdquo;</i></p>`
                     : ''
                 }
-                <p style="${P}">Your answers look at six areas that decide whether people understand what you sell, trust you, and say yes:</p>
-                <ul style="margin:0 0 18px;padding-left:22px;font:17px/1.65 Georgia,serif;color:#14100F">
-                  ${DIMS.map(d => `<li>${esc(fr(d))}</li>`).join('')}
-                </ul>
-                <p style="${P}">As you review your breakdown, pay attention to the area or areas that scored lowest.</p>
+
                 ${line ? `<p style="${P}">${line}</p>` : ''}
-                <p style="${P}">That is a useful starting point. It isn't proof of the problem. Your answers show where to look, not exactly what every buyer thinks.</p>
-                <p style="${P}">Here's one exercise to begin with:</p>
-                <p style="${P}">Ask yourself: What would a stranger need to understand, believe or see before they felt safe saying yes to me?</p>
-                <p style="${P}">Write down your answer. Then compare it with what your profile, posts, offer and proof actually say.</p>
-                <p style="${P}">You may notice a gap worth fixing.</p>
-                <p style="${P}">${
+
+                <p style="${P}">
+                  That matters because buyers cannot say yes confidently if they cannot quickly answer:
+                </p>
+
+                <ul style="margin:0 0 18px;padding-left:22px;font:17px/1.65 Georgia,serif;color:#14100F">
+                  <li>What problem do you solve?</li>
+                  <li>Who do you solve it for?</li>
+                  <li>Why should they choose you instead of another consultant?</li>
+                </ul>
+
+                <p style="${P}">
+                  Your answers point to where that understanding may be breaking down.
+                </p>
+
+                <p style="${P}">
+                  Start by reviewing your full breakdown here:
+                </p>
+
+                ${resultsButton}
+
+                <p style="${P}">
+                  Here is one question to sit with as you read it:
+                </p>
+
+                <p style="${P}">
+                  <b>What would a stranger need to understand, believe, or see before they felt safe saying yes to me?</b>
+                </p>
+
+                <p style="${P}">
+                  Write your answer down. Then compare it with what your profile, posts, offer, and proof currently say.
+                </p>
+
+                <p style="${P}">
+                  You may notice a gap worth fixing.
+                </p>
+
+                ${
                   consent
-                    ? `Over the next few days, I'll share some practical ways to look at that gap, without assuming you need to post more, redesign everything, or change your whole business.`
-                    : path === 'no_pitch'
-                      ? noPitchLine
-                      : pitchLine
-                }</p>
-                <p style="${P}">Start with your results here:</p>
-                ${btn('VIEW MY RESULTS')}
-                <p style="${P}">Brenda</p>
+                    ? `<p style="${P}">Over the next few days, I’ll share practical ways to look at that gap—without assuming you need to post more, redesign everything, or change your whole business.</p>`
+                    : ''
+                }
+
+                ${
+                  showCall
+                    ? `<p style="${P}">If you want help interpreting your result and identifying your fastest next move, book a <b>27-minute Why-Hire-You Clarity Call</b>.</p>
+                       ${callButton}`
+                    : `<p style="${P}">When you’re ready, your results page also shows practical next steps for where you are right now.</p>`
+                }
+
+                <p style="${P}">Talk soon,<br>Brenda</p>
+
                 <p style="margin:0;padding-top:18px;border-top:1px solid #e6dfd8;font:12px/1.6 Arial,sans-serif;color:#8a8079">
                   Brenda Blanche &middot; Market Perception Strategist<br>
-                  You're receiving this because you completed the Why-Hire-You Scorecard and asked for your results.${
+                  You’re receiving this because you completed the Why-Hire-You Scorecard and asked for your results.${
                     consent
                       ? ' You also agreed to receive follow-up emails. Reply to this email to unsubscribe.'
                       : ''
@@ -418,7 +485,7 @@ async function handle(request, env) {
   const email = t(d.email).toLowerCase();
   const name = t(d.name);
 
-  if (!name || !/^\S+@\S+\.\S+$/.test(email)) {
+  if (!name || !/^\S+@\S+@\S+$/.test(email) === false && !/^\S+@\S+\.\S+$/.test(email)) {
     return json({ ok: false }, 400);
   }
 
@@ -453,6 +520,7 @@ async function handle(request, env) {
   const seg = Object.keys(SEGL).includes(d.segment) ? d.segment : '';
   const ready = [1, 2, 3, 4].includes(Number(d.deliver)) ? Number(d.deliver) : 0;
   const help = [1, 2, 3, 4].includes(Number(d.help)) ? Number(d.help) : 0;
+
   /* Story (up to 600) + "Already tried" (up to 400) arrive together, so allow room for both. */
   const question = q1100(d.question);
 
@@ -556,7 +624,9 @@ async function handle(request, env) {
       ? resend(
           env,
           email,
-          'Your Why-Hire-You Scorecard results',
+          name
+            ? `This is why clients hesitate to hire you, ${name}`
+            : 'This is why clients hesitate to hire you',
           firstEmail(name, kind, gaps, url, consent, seg, path),
           env.NOTIFY_EMAIL
         ).then(r => r.ok)
